@@ -1,0 +1,10 @@
+project: savantenvs/blend
+target: blend-fuzz
+
+cmds:
+  - cmd: /mayhem/blend-fuzz
+    libfuzzer: true
+
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/blend-fuzz/testsuite
