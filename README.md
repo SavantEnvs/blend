@@ -20,6 +20,10 @@ fn main() {
 }
 ```
 
+## Development Status
+
+This crate is being maintained, though not actively developed. Even if goes years without updates, feature requests and use-cases are more than welcome. Open an issue!
+
 ## The .blend file
 
 To use this crate to its full extent it is useful to understand how the .blend file works internally. A simplified
