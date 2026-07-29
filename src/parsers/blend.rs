@@ -72,40 +72,40 @@ pub struct Header {
     pub version: [u8; 3],
 }
 
-fn pointer_size_bits32(input: &[u8]) -> Result<PointerSize> {
+fn pointer_size_bits32(input: &[u8]) -> Result<'_, PointerSize> {
     let (input, _) = tag("_")(input)?;
     Ok((input, PointerSize::Bits32))
 }
 
-fn pointer_size_bits64(input: &[u8]) -> Result<PointerSize> {
+fn pointer_size_bits64(input: &[u8]) -> Result<'_, PointerSize> {
     let (input, _) = tag("-")(input)?;
     Ok((input, PointerSize::Bits64))
 }
 
-pub fn pointer_size(input: &[u8]) -> Result<PointerSize> {
+pub fn pointer_size(input: &[u8]) -> Result<'_, PointerSize> {
     alt((pointer_size_bits32, pointer_size_bits64))(input)
 }
 
-fn endianness_litte(input: &[u8]) -> Result<Endianness> {
+fn endianness_litte(input: &[u8]) -> Result<'_, Endianness> {
     let (input, _) = tag("v")(input)?;
     Ok((input, Endianness::Little))
 }
 
-fn endianness_big(input: &[u8]) -> Result<Endianness> {
+fn endianness_big(input: &[u8]) -> Result<'_, Endianness> {
     let (input, _) = tag("V")(input)?;
     Ok((input, Endianness::Big))
 }
 
-pub fn endianness(input: &[u8]) -> Result<Endianness> {
+pub fn endianness(input: &[u8]) -> Result<'_, Endianness> {
     alt((endianness_litte, endianness_big))(input)
 }
 
-pub fn version(input: &[u8]) -> Result<[u8; 3]> {
+pub fn version(input: &[u8]) -> Result<'_, [u8; 3]> {
     let (input, v) = take(3_usize)(input)?;
     Ok((input, [v[0], v[1], v[2]]))
 }
 
-pub fn header(input: &[u8]) -> Result<Header> {
+pub fn header(input: &[u8]) -> Result<'_, Header> {
     let (input, _) = match tag::<_, _, BlendParseError>("BLENDER")(input) {
         Ok(v) => v,
         Err(_) => {
@@ -128,7 +128,7 @@ pub fn header(input: &[u8]) -> Result<Header> {
     ))
 }
 
-pub fn block_header_code(input: &[u8]) -> Result<[u8; 4]> {
+pub fn block_header_code(input: &[u8]) -> Result<'_, [u8; 4]> {
     let (input, v) = take(4_usize)(input)?;
     Ok((input, [v[0], v[1], v[2], v[3]]))
 }

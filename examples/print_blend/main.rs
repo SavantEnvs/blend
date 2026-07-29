@@ -48,9 +48,11 @@ fn print_blend(file_name: impl AsRef<str>) -> Result<(), io::Error> {
 }
 
 pub fn main() -> Result<(), io::Error> {
-    print_blend("2_80.blend")?;
-    print_blend("2_90.blend")?;
-    print_blend("3_0.blend")?;
-    print_blend("3_5.blend")?;
+    //print_blend("2_80.blend")?;
+    //print_blend("2_90.blend")?;
+    //print_blend("3_0.blend")?;
+    //print_blend("3_5.blend")?;
+    //print_blend("4_X.blend")?;
+    print_blend("5_1.blend")?;
     Ok(())
 }

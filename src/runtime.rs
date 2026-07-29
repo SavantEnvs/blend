@@ -1362,7 +1362,7 @@ impl Blend {
     /// have the correct type information in their headers, but their type is defined by the field that accesses them.
     /// You can only query for root blocks because subsidiary blocks have to be accessed through some field for their
     /// type to be known.
-    pub fn root_instances(&self) -> impl Iterator<Item = Instance> {
+    pub fn root_instances(&self) -> impl Iterator<Item = Instance<'_>> {
         self.blend
             .blocks
             .iter()
@@ -1388,7 +1388,7 @@ impl Blend {
 
     /// Root blocks have a code that tells us their type, "OB" for object, "ME" for mesh, "MA" for material, etc.
     /// You can use this method to filter for a single type of block.
-    pub fn instances_with_code(&self, search_code: [u8; 2]) -> impl Iterator<Item = Instance> {
+    pub fn instances_with_code(&self, search_code: [u8; 2]) -> impl Iterator<Item = Instance<'_>> {
         self.blend
             .blocks
             .iter()

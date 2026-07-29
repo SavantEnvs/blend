@@ -50,7 +50,7 @@ pub enum FieldInfo {
     FnPointer,
 }
 
-pub fn fn_pointer(input: &str) -> Result<(&str, FieldInfo)> {
+pub fn fn_pointer(input: &str) -> Result<'_, (&str, FieldInfo)> {
     let (input, name) = delimited(tag("(*"), take_until(")"), tag(")"))(input)?;
 
     let (input, _) = delimited(tag("("), take_until(")"), tag(")"))(input)?;
@@ -58,7 +58,7 @@ pub fn fn_pointer(input: &str) -> Result<(&str, FieldInfo)> {
     Ok((input, (name, FieldInfo::FnPointer)))
 }
 
-fn array_dimensions(input: &str) -> Result<Vec<usize>> {
+fn array_dimensions(input: &str) -> Result<'_, Vec<usize>> {
     let (input, array_dimensions) =
         many0(complete(delimited(tag("["), take_until("]"), tag("]"))))(input)?;
 
@@ -74,7 +74,7 @@ fn array_dimensions(input: &str) -> Result<Vec<usize>> {
     Ok((input, dimensions_len))
 }
 
-fn pointer(input: &str) -> Result<(&str, FieldInfo)> {
+fn pointer(input: &str) -> Result<'_, (&str, FieldInfo)> {
     let (input, asterisks) = many1(tag("*"))(input)?;
     let (input, name) = take_till(|c| c == '[')(input)?;
 
@@ -105,7 +105,7 @@ fn pointer(input: &str) -> Result<(&str, FieldInfo)> {
     }
 }
 
-fn value(input: &str) -> Result<(&str, FieldInfo)> {
+fn value(input: &str) -> Result<'_, (&str, FieldInfo)> {
     let (input, name) = take_till(|c| c == '[')(input)?;
     if !input.is_empty() {
         let (input, dimensions) = array_dimensions(input)?;
@@ -125,6 +125,6 @@ fn value(input: &str) -> Result<(&str, FieldInfo)> {
     }
 }
 
-pub fn parse_field(input: &str) -> Result<(&str, FieldInfo)> {
+pub fn parse_field(input: &str) -> Result<'_, (&str, FieldInfo)> {
     alt((fn_pointer, pointer, value))(input)
 }
