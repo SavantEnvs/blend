@@ -1,3 +1,8 @@
+# blend 0.9
+
+* Added Blender 5.0/5.1 file-format support (17-byte header, 64-bit block headers).
+* Breaking: Header.version is now a Version { major, minor } struct (was [u8; 3]); Header gained a format field.
+
 # blend 0.8
 
 * Added better support for Blender primitives. Should be more resilient to future updates to the blend file.

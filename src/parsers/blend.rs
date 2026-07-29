@@ -62,6 +62,53 @@ pub enum Block {
     Dna(Dna),
 }
 
+/// The on-disk layout of a blend file.
+///
+/// Blender 5.0 introduced a new file/block header format to support data blocks larger than 2GiB.
+/// The two variants are not binary compatible so the parser needs to know which one it is reading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileFormat {
+    /// Pre-5.0 format: 12-byte file header and a block header of
+    /// `code(4) + size(u32) + address(ptr) + sdna_index(u32) + count(u32)`.
+    Legacy,
+    /// Blender 5.0+ format: 17-byte file header and a block header of
+    /// `code(4) + sdna_index(u32) + address(u64) + size(u64) + count(u64)`.
+    New,
+}
+
+/// The version of Blender used to save the blend file.
+///
+/// Blender stores the version as a single integer of the form `major * 100 + minor` (the same
+/// convention as `BLENDER_VERSION` in Blender's own source). Legacy files encode this as three
+/// ASCII digits (e.g. `"280"` -> 2.80) and Blender 5.0+ files as four (e.g. `"0501"` -> 5.1), so
+/// splitting into `major`/`minor` keeps the value correct regardless of how many digits are used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Version {
+    pub major: u16,
+    pub minor: u16,
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}.{}", self.major, self.minor)
+    }
+}
+
+impl Version {
+    /// Parses ASCII version digits (`b"280"`, `b"0501"`, ...) into a `major`/`minor` pair.
+    fn from_digits(digits: &[u8]) -> Version {
+        let combined = digits
+            .iter()
+            .filter(|b| b.is_ascii_digit())
+            .fold(0_u16, |acc, &b| acc * 10 + u16::from(b - b'0'));
+
+        Version {
+            major: combined / 100,
+            minor: combined % 100,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Header {
     /// The size of the pointer on the machine used to save the blend file.
@@ -69,7 +116,9 @@ pub struct Header {
     /// The endianness on the machine used to save the blend file.
     pub endianness: Endianness,
     /// The version of Blender used to save the blend file.
-    pub version: [u8; 3],
+    pub version: Version,
+    /// The on-disk layout of the file, which controls how block headers are parsed.
+    pub format: FileFormat,
 }
 
 fn pointer_size_bits32(input: &[u8]) -> Result<'_, PointerSize> {
@@ -100,9 +149,9 @@ pub fn endianness(input: &[u8]) -> Result<'_, Endianness> {
     alt((endianness_litte, endianness_big))(input)
 }
 
-pub fn version(input: &[u8]) -> Result<'_, [u8; 3]> {
+pub fn version(input: &[u8]) -> Result<'_, Version> {
     let (input, v) = take(3_usize)(input)?;
-    Ok((input, [v[0], v[1], v[2]]))
+    Ok((input, Version::from_digits(v)))
 }
 
 pub fn header(input: &[u8]) -> Result<'_, Header> {
@@ -115,17 +164,47 @@ pub fn header(input: &[u8]) -> Result<'_, Header> {
         }
     };
 
-    let (input, (pointer_size, endianness, version)) =
-        tuple((pointer_size, endianness, version))(input)?;
+    // Detect the file format. In the legacy (pre-5.0) header the byte right after "BLENDER" is the
+    // pointer-size marker ('_' or '-'). In the Blender 5.0+ header it is a two-digit ASCII number
+    // encoding the total header size (e.g. "17"), so it is always a digit here.
+    if let Some(b'_') | Some(b'-') = input.first() {
+        let (input, (pointer_size, endianness, version)) =
+            tuple((pointer_size, endianness, version))(input)?;
 
-    Ok((
-        input,
-        Header {
-            pointer_size,
-            endianness,
-            version,
-        },
-    ))
+        Ok((
+            input,
+            Header {
+                pointer_size,
+                endianness,
+                version,
+                format: FileFormat::Legacy,
+            },
+        ))
+    } else {
+        // New 17-byte header (Blender 5.0+):
+        //   "BLENDER" + header_size(2 digits) + pointer_size(1) + format_version(2 digits)
+        //             + endianness(1) + file_version(4 digits)
+        // The pointer-size ('-') and endianness ('v') markers are kept only for readability and are
+        // always 64-bit little-endian in this format, but we still parse them from their positions.
+        let (input, _header_size) = take(2_usize)(input)?;
+        let (input, pointer_size) = pointer_size(input)?;
+        let (input, _format_version) = take(2_usize)(input)?;
+        let (input, endianness) = endianness(input)?;
+        let (input, v) = take(4_usize)(input)?;
+
+        // The version is now four digits (upper two = major, lower two = minor), e.g. "0501" -> 5.1.
+        let version = Version::from_digits(v);
+
+        Ok((
+            input,
+            Header {
+                pointer_size,
+                endianness,
+                version,
+                format: FileFormat::New,
+            },
+        ))
+    }
 }
 
 pub fn block_header_code(input: &[u8]) -> Result<'_, [u8; 4]> {
@@ -213,23 +292,40 @@ impl BlendParseContext {
         match self {
             BlendParseContext::ParsedHeader(header) => {
                 let (input, code) = block_header_code(input)?;
-                let (input, size): (_, usize) = match header.endianness {
-                    Endianness::Little => {
-                        le_u32(input).map(|(i, n)| (i, n.try_into().expect("u32 to usize")))?
-                    }
-                    Endianness::Big => {
-                        be_u32(input).map(|(i, n)| (i, n.try_into().expect("u32 to usize")))?
-                    }
-                };
-                let (input, memory_address) = self.memory_address(input)?;
-                let (input, dna_index) = match header.endianness {
-                    Endianness::Little => le_u32(input)?,
-                    Endianness::Big => be_u32(input)?,
-                };
-                let (input, count) = match header.endianness {
-                    Endianness::Little => le_u32(input)?,
-                    Endianness::Big => be_u32(input)?,
-                };
+
+                // The block header layout changed in Blender 5.0. See `FileFormat` for details.
+                let (input, size, memory_address, dna_index, count): (_, usize, _, u32, u64) =
+                    match header.format {
+                        FileFormat::Legacy => {
+                            // code(4) + size(u32) + address(ptr) + sdna_index(u32) + count(u32)
+                            let (input, size): (_, usize) = match header.endianness {
+                                Endianness::Little => le_u32(input)
+                                    .map(|(i, n)| (i, n.try_into().expect("u32 to usize")))?,
+                                Endianness::Big => be_u32(input)
+                                    .map(|(i, n)| (i, n.try_into().expect("u32 to usize")))?,
+                            };
+                            let (input, memory_address) = self.memory_address(input)?;
+                            let (input, dna_index) = match header.endianness {
+                                Endianness::Little => le_u32(input)?,
+                                Endianness::Big => be_u32(input)?,
+                            };
+                            let (input, count) = match header.endianness {
+                                Endianness::Little => le_u32(input)?,
+                                Endianness::Big => be_u32(input)?,
+                            };
+                            (input, size, memory_address, dna_index, u64::from(count))
+                        }
+                        FileFormat::New => {
+                            // code(4) + sdna_index(u32) + address(u64) + size(u64) + count(u64),
+                            // always little-endian and 64-bit.
+                            let (input, dna_index) = le_u32(input)?;
+                            let (input, memory_address) = self.memory_address(input)?;
+                            let (input, size) = le_u64(input)?;
+                            let (input, count) = le_u64(input)?;
+                            let size: usize = size.try_into().expect("u64 to usize");
+                            (input, size, memory_address, dna_index, count)
+                        }
+                    };
 
                 let (input, block_data) = take(size)(input)?;
 
