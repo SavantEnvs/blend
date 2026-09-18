@@ -1,0 +1,10 @@
+project: savantenvs/blend
+target: blend-fuzz-buggy-mhh-run-3
+# origin: https://app.mayhem.security/mayhemheroes/blend/blend-fuzz/3
+
+cmds:
+  - cmd: /mayhem/blend-fuzz
+    libfuzzer: true
+
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
